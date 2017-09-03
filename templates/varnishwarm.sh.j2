@@ -1,0 +1,59 @@
+# {{ ansible_managed }}
+
+#!/usr/bin/env bash
+site=https://www.{{ nginx_vhost_domain }}
+
+#Download post sitemap
+wget -q $site/post-sitemap.xml -O postsitemap.xml
+
+#Parse the xml file and put it into posts.txt
+xml2 < postsitemap.xml | grep /url/loc= | sed 's/.*=//' > posts.txt
+
+# Loop through the posts.txt and use curl to send an always miss request
+
+while read post; do
+  curl -s $post -H "Cache-Control: no-cache" -o /dev/null
+  echo Refreshed $post
+  echo Waiting
+  sleep 10
+done < posts.txt
+
+#Download page sitemap
+wget -q $site/page-sitemap.xml -O pagesitemap.xml
+
+#Parse the xml file and put it into pages.txt
+xml2 < pagesitemap.xml | grep /url/loc= | sed 's/.*=//' > pages.txt
+
+# Loop through the pages.txt and use curl to send an always miss request
+
+while read page; do
+  curl -s $page -H "Cache-Control: no-cache" -o /dev/null
+  echo Refreshed $page
+  echo Waiting
+  sleep 10
+done < pages.txt
+
+#Download category sitemap
+wget -q $site/category-sitemap.xml -O categorysitemap.xml
+
+#Parse the xml file and put it into categories.txt
+xml2 < categorysitemap.xml | grep /url/loc= | sed 's/.*=//' > categories.txt
+
+# Loop through the categories.txt and use curl to send an always miss request
+
+while read category; do
+  curl -s $category -H "Cache-Control: no-cache" -o /dev/null
+  echo Refreshed $category
+  echo Waiting
+  sleep 30
+done < categories.txt
+
+# Warm up and refresh blogroll pages, change 30 to the number of pages back you show posts
+for i in {1..30}
+ do
+ echo Refreshing $site/page/$i
+ curl -s $site/page/$i/ -H "Cache-Control: no-cache" -o /dev/null
+ echo Refreshed $site/page/$i
+ echo Waiting
+ sleep 1
+done
