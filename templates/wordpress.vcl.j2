@@ -1,6 +1,5 @@
 # {{ ansible_managed }}
 
-#varnish 4 vcl
 /* SET THE HOST AND PORT OF WORDPRESS
  * *********************************************************/
 vcl 4.0;
@@ -8,11 +7,9 @@ import std;
 
 backend default {
   .host = "127.0.0.1";
-  .port = "8080";
-  .connect_timeout = 600s;
-  .first_byte_timeout = 600s;
-  .between_bytes_timeout = 600s;
-  .max_connections = 800;
+  .port = "{{ varnish_default_backend_port }}";
+  .first_byte_timeout = 60s;
+  .connect_timeout = 300s;
 }
 
 # SET THE ALLOWED IP OF PURGE REQUESTS
@@ -20,13 +17,12 @@ backend default {
 acl purge {
   "localhost";
   "127.0.0.1";
-  "46.36.38.163";
+  "{{ ansible_control_host_address }}";
 }
 
 #THE RECV FUNCTION
 # ##########################################################
 sub vcl_recv {
-
 
 # set realIP by trimming CloudFlare IP which will be used for various checks
 set req.http.X-Actual-IP = regsub(req.http.X-Forwarded-For, "[, ].*$", "");
@@ -83,24 +79,19 @@ if (req.method == "BAN") {
 
 # DO NOT CACHE RSS FEED
  if (req.url ~ "/feed(/)?") {
-	return ( pass );
+        return ( pass );
 }
 
-if (req.url ~ "/wp-cron.php" || req.url ~ "preview=true") {
-    return (pass);
+#Pass wp-cron
+
+if (req.url ~ "wp-cron\.php.*") {
+ return ( pass );
 }
 
 ## Do not cache search results, comment these 3 lines if you do want to cache them
 
 if (req.url ~ "/\?s\=") {
-	return ( pass );
-}
-
-## Fix WP-Rocket caching
-
-if (req.url ~ "\.(gif|jpg|jpeg|swf|flv|mp3|mp4|pdf|ico|png|css|js)(\?.*|)$") {
-	unset req.http.cookie;
-	set req.url = regsub(req.url, "\?.*$", "");
+        return ( pass );
 }
 
 # CLEAN UP THE ENCODING HEADER.
@@ -143,9 +134,14 @@ if (req.url ~ "\.(gif|jpg|jpeg|swf|flv|mp3|mp4|pdf|ico|png|css|js)(\?.*|)$") {
   # OPTIONAL: DO NOT CACHE LOGGED IN USERS (THIS OCCURS IN FETCH TOO, EITHER
   # COMMENT OR UNCOMMENT BOTH
   # ##########################################################
-  #if ( req.http.cookie ~ "wordpress_logged_in" ) {
-  #  return( pass );
-  #}
+  if ( req.http.cookie ~ "wordpress_logged_in|resetpass" ) {
+    return( pass );
+  }
+
+  #fix CloudFlare Mixed Content with Flexible SSL
+  if (req.http.X-Forwarded-Proto) {
+    return(hash);
+  }
 
   # IF THE REQUEST IS NOT FOR A PREVIEW, WP-ADMIN OR WP-LOGIN
   # THEN UNSET THE COOKIES
@@ -162,10 +158,15 @@ if (req.url ~ "\.(gif|jpg|jpeg|swf|flv|mp3|mp4|pdf|ico|png|css|js)(\?.*|)$") {
     return (pass);
   }
 
-  # IF YOU GET HERE THEN THIS REQUEST SHOULD BE CACHED
-  # ##########################################################
-  return (hash);
 }
+
+sub vcl_hash {
+
+if (req.http.X-Forwarded-Proto) {
+    hash_data(req.http.X-Forwarded-Proto);
+    }
+}
+
 
 # HIT FUNCTION
 # ##########################################################
@@ -189,12 +190,12 @@ sub vcl_backend_response {
   set beresp.http.Vary = "Accept-Encoding";
 
   # IF NOT WP-ADMIN THEN UNSET COOKIES AND SET THE AMOUNT OF
-  # TIME THIS PAGE WILL STAY CACHED (TTL)
+  # TIME THIS PAGE WILL STAY CACHED (TTL), add other locations or subdomains you do not want to cache here in case they set cookies
   # ##########################################################
-  if (!(bereq.url ~ "wp-(login|admin)") && !bereq.http.cookie ~ "wordpress_logged_in" ) {
+  if (!(bereq.url ~ "wp-(login|admin)") && !bereq.http.cookie ~ "wordpress_logged_in|resetpass" ) {
     unset beresp.http.set-cookie;
-    set beresp.ttl = 52w;
-#    set beresp.grace =1d;
+    set beresp.ttl = 1w;
+    set beresp.grace =3d;
   }
 
   if (beresp.ttl <= 0s ||
@@ -212,7 +213,6 @@ sub vcl_backend_response {
 # DELIVER FUNCTION
 # ##########################################################
 sub vcl_deliver {
-
   # IF THIS PAGE IS ALREADY CACHED THEN RETURN A 'HIT' TEXT
   # IN THE HEADER (GREAT FOR DEBUGGING)
   # ##########################################################
@@ -233,7 +233,5 @@ sub vcl_deliver {
   # Remove some heanders: Varnish
   unset resp.http.Via;
   unset resp.http.X-Varnish;
-
- return (deliver);
 
 }
