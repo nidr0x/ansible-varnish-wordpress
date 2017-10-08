@@ -25,12 +25,12 @@
     state: absent
   when: varnish_systemd_config_path != '/etc/systemd/system'
 
-# - name: Assign priority in AptPreferences to avoid install Varnish from upstream
-#   blockinfile:
-#     create: yes
-#     path: /etc/apt/preferences
-#     content: |
-#        Package: varnish
-#        Pin origin: packagecloud.io
-#        Pin-Priority: 610
-#   when: varnish_version = 4.0 or 4.1       
+- name: Assign priority in AptPreferences to avoid install Varnish from upstream (if > 5.1)
+  blockinfile:
+    create: yes
+    path: /etc/apt/preferences
+    content: |
+       Package: varnish
+       Pin origin: packagecloud.io
+       Pin-Priority: 610
+  when: varnish_version > 5.1
