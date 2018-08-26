@@ -1,7 +1,7 @@
 # {{ ansible_managed }}
 
 #!/usr/bin/env bash
-site=https://www.{{ nginx_vhost_domain }}
+site=https://{{ nginx_vhost_domain }}
 
 #Download post sitemap
 wget -q $site/post-sitemap.xml -O postsitemap.xml
